@@ -1,0 +1,115 @@
+
+# Step 1: Imports
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import re
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+
+# Step 2: Load Dataset
+
+# Replace this path with your downloaded CSV path
+df = pd.read_csv(r"C:\Users\L.Pranathi\Downloads\archive (5)\rows.csv", low_memory=False)
+
+# Quick check
+print("Dataset shape:", df.shape)
+print("Columns:", df.columns)
+print(df.head)
+
+# Step 3: Handle Missing Values
+
+text_column = 'Consumer complaint narrative'
+label_column = 'Product'
+
+# Drop rows with missing complaint text or label
+df = df[df[text_column].notna()]
+df = df[df[label_column].notna()]
+
+# Check class distribution
+plt.figure(figsize=(10,5))
+sns.countplot(x=label_column, data=df)
+plt.xticks(rotation=45)
+plt.title("Class Distribution")
+plt.show()
+
+# Step 4: Text Preprocessing
+
+stop_words = set(stopwords.words('english'))
+lemmatizer = WordNetLemmatizer()
+
+def clean_text(text):
+    text = str(text).lower()
+    text = re.sub(r"[^\w\s]", "", text)  # remove punctuation
+    text = re.sub(r"\d+", "", text)      # remove numbers
+    tokens = text.split()
+    tokens = [t for t in tokens if t not in stop_words]
+    tokens = [lemmatizer.lemmatize(t) for t in tokens]
+    return " ".join(tokens)
+
+df['clean_text'] = df[text_column].apply(clean_text)
+
+
+# Step 5: Train-Test Split
+
+X = df['clean_text']
+y = df[label_column]
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+
+# Step 6: Feature Extraction
+
+tfidf = TfidfVectorizer(max_features=10000)
+X_train_tfidf = tfidf.fit_transform(X_train)
+X_test_tfidf = tfidf.transform(X_test)
+
+
+# Step 7: Model Training
+
+# Logistic Regression
+lr = LogisticRegression(max_iter=1000)
+lr.fit(X_train_tfidf, y_train)
+y_pred_lr = lr.predict(X_test_tfidf)
+print("Logistic Regression Accuracy:", accuracy_score(y_test, y_pred_lr))
+print(classification_report(y_test, y_pred_lr))
+
+# Random Forest
+rf = RandomForestClassifier(n_estimators=200, n_jobs=-1, random_state=42)
+rf.fit(X_train_tfidf, y_train)
+y_pred_rf = rf.predict(X_test_tfidf)
+print("Random Forest Accuracy:", accuracy_score(y_test, y_pred_rf))
+print(classification_report(y_test, y_pred_rf))
+
+# XGBoost
+xgb = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss', n_jobs=-1)
+xgb.fit(X_train_tfidf, y_train)
+y_pred_xgb = xgb.predict(X_test_tfidf)
+print("XGBoost Accuracy:", accuracy_score(y_test, y_pred_xgb))
+print(classification_report(y_test, y_pred_xgb))
+
+# Step 8: Confusion Matrix for Best Model (example: XGBoost)
+
+cm = confusion_matrix(y_test, y_pred_xgb)
+plt.figure(figsize=(8,6))
+sns.heatmap(cm, annot=True, fmt='d', xticklabels=np.unique(y), yticklabels=np.unique(y))
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.title('Confusion Matrix - XGBoost')
+plt.show()
+
+# Step 9: Prediction Example
+
+sample_text = "I am having trouble with my credit card company reporting incorrect balance."
+sample_clean = clean_text(sample_text)
+sample_tfidf = tfidf.transform([sample_clean])
+predicted_class = xgb.predict(sample_tfidf)
+print("Predicted Product Category:", predicted_class[0])
